@@ -9,6 +9,7 @@
 
 # Output files / executables (idk what to say em tbh)
 matmul_vector
+randoms/
 
 # Executables
 *.exe
