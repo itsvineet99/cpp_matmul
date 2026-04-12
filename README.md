@@ -2,6 +2,7 @@
 
 In this project we implement matrix multiplication in cpp and then optimize it get best results on cpu.
 
+> The best implementation right now is adv_boxed_parallel_matmul.cpp which uses both boxed matrix multiplication and parallelization using openmp.
 
 ## Build
 
@@ -9,12 +10,6 @@ In this project we implement matrix multiplication in cpp and then optimize it g
 
 ```bash
 make
-```
-
-### Using clang++
-
-```bash
-clang++ -std=c++17 matmul_vector.cpp third_party/anyoption/anyoption.cpp -o matmul_vector
 ```
 
 ## Run
