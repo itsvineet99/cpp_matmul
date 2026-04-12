@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
     }
 
     int N = m; // number of elements in each dimensino (in all dimensions we have same number of elements)
-    int NB = 32; // number of blocks 
+    int NB = 128; // number of blocks, here we have found after experimenting that 128 is obptimal number of blocks for this specific dimensions of matrix.
     int NEIB = N/NB; // number of elements in each block 
 
     const auto start = std::chrono::steady_clock::now();
