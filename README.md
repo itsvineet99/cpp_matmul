@@ -8,7 +8,7 @@ In this project we implement matrix multiplication in cpp and then optimize it g
 
 ## Results
 
-![result.png](image.png)
+![results.png](image.png)
 
 ## Build
 

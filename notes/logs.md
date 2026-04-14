@@ -4,6 +4,11 @@
 
 - using sum variable to store the matmul cause loss of performane in pointer implementation. rather if we directly add values in C matrix then it gives massive performance gain like from 1560ms to 190ms.
 - but the same thing backfires on vector implementation and loses perfomance.
+- gigaflops formula: 
+
+$$
+\text{GigaFLOPS} = \frac{2 \times M \times N \times K}{\text{Time in Seconds} \times 10^9}
+$$
 
 ### date: 14/04/2026
 

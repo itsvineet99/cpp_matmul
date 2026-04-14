@@ -34,6 +34,20 @@ size_t safe_mul(size_t a, size_t b, const char* label) {
     return a * b;
 }
 
+double calculate_gflops(size_t m,
+                        size_t n,
+                        size_t k,
+                        std::chrono::duration<double, std::milli> elapsed_ms) {
+    const double elapsed_seconds = elapsed_ms.count() / 1000.0;
+    if (elapsed_seconds <= 0.0) {
+        return 0.0;
+    }
+
+    const double flops = 2.0 * static_cast<double>(m) * static_cast<double>(n) *
+                         static_cast<double>(k);
+    return flops / elapsed_seconds / 1e9;
+}
+
 void naive_matmul(const double* A,
                   const double* B,
                   double* C,
@@ -162,6 +176,9 @@ int main(int argc, char** argv) {
     const auto n_end = std::chrono::steady_clock::now();
     const std::chrono::duration<double, std::milli> n_elapsed_ms = n_end - n_start;
 
+    const double blocked_gflops = calculate_gflops(m, n, k, b_elapsed_ms);
+    const double naive_gflops = calculate_gflops(m, n, k, n_elapsed_ms);
+
     double checksum_blocked = 0.0;
     double checksum_naive = 0.0;
     for (size_t i = 0; i < c_size; ++i) {
@@ -171,10 +188,12 @@ int main(int argc, char** argv) {
 
     std::cout << "Computed blocked C (" << m << "x" << n << ") with checksum: "
               << checksum_blocked << '\n';
-    std::cout << "Matmul time for blocked implementation (ms): " << b_elapsed_ms.count() << '\n';
+    std::cout << "Matmul time for blocked implementation (ms): " << b_elapsed_ms.count()
+              << ", GigaFLOPS: " << blocked_gflops << '\n';
     std::cout << "Computed naive C (" << m << "x" << n << ") with checksum: "
               << checksum_naive << '\n';
-    std::cout << "Matmul time for naive implementation (ms): " << n_elapsed_ms.count() << '\n';
+    std::cout << "Matmul time for naive implementation (ms): " << n_elapsed_ms.count()
+              << ", GigaFLOPS: " << naive_gflops << '\n';
 
     // imp to prevent from leaking memory 
     delete[] A;
