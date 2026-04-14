@@ -34,6 +34,26 @@ size_t safe_mul(size_t a, size_t b, const char* label) {
     return a * b;
 }
 
+void naive_matmul(const double* A,
+                  const double* B,
+                  double* C,
+                  size_t m,
+                  size_t n,
+                  size_t k) {
+    for (size_t p = 0; p < m; ++p) {
+        size_t a_row = p * k;
+        size_t c_row = p * n;
+
+        for (size_t r = 0; r < k; ++r) {
+            double a_val = A[a_row + r];
+
+            for (size_t q = 0; q < n; ++q) {
+                C[c_row + q] += a_val * B[r * n + q];
+            }
+        }
+    }
+}
+
 void boxed_parallel_matmul(const double* A,
                            const double* B,
                            double* C,
@@ -110,7 +130,8 @@ int main(int argc, char** argv) {
 
     double* A = new double[a_size];
     double* B = new double[b_size];
-    double* C = new double[c_size];
+    double* C_blocked = new double[c_size];
+    double* C_naive = new double[c_size];
 
     std::mt19937 rng(12345);
     std::uniform_real_distribution<double> dist(0.0, 1.0);
@@ -121,33 +142,44 @@ int main(int argc, char** argv) {
         B[i] = dist(rng);
     }
     for (size_t i = 0; i < c_size; ++i) {
-        C[i] = 0.0;
+        C_blocked[i] = 0.0;
+        C_naive[i] = 0.0;
     }
 
     int N = m; // number of elements in each dimensino (in all dimensions we have same number of elements)
     int NB = 128; // number of blocks, here we have found after experimenting that 128 is obptimal number of blocks for this specific dimensions of matrix.
     int NEIB = N/NB; // number of elements in each block 
 
-    const auto start = std::chrono::steady_clock::now();
+    // blocked parallel matrix multiplication 
+    const auto b_start = std::chrono::steady_clock::now();
+    boxed_parallel_matmul(A, B, C_blocked, N, NB, NEIB);
+    const auto b_end = std::chrono::steady_clock::now();
+    const std::chrono::duration<double, std::milli> b_elapsed_ms = b_end - b_start;
 
-    boxed_parallel_matmul(A, B, C, N, NB, NEIB);
+    // naive matrix multiplication
+    const auto n_start = std::chrono::steady_clock::now();
+    naive_matmul(A, B, C_naive, m, n, k);
+    const auto n_end = std::chrono::steady_clock::now();
+    const std::chrono::duration<double, std::milli> n_elapsed_ms = n_end - n_start;
 
-    const auto end = std::chrono::steady_clock::now();
-    const std::chrono::duration<double, std::milli> elapsed_ms = end - start;
-
-    double checksum = 0.0;
+    double checksum_blocked = 0.0;
+    double checksum_naive = 0.0;
     for (size_t i = 0; i < c_size; ++i) {
-        checksum += C[i];
+        checksum_blocked += C_blocked[i];
+        checksum_naive += C_naive[i];
     }
 
-    std::cout << "Computed C (" << m << "x" << n << ") with checksum: "
-              << checksum << '\n';
-    std::cout << "Matmul time (ms): " << elapsed_ms.count() << '\n';
+    std::cout << "Computed blocked C (" << m << "x" << n << ") with checksum: "
+              << checksum_blocked << '\n';
+    std::cout << "Matmul time for blocked implementation (ms): " << b_elapsed_ms.count() << '\n';
+    std::cout << "Computed naive C (" << m << "x" << n << ") with checksum: "
+              << checksum_naive << '\n';
+    std::cout << "Matmul time for naive implementation (ms): " << n_elapsed_ms.count() << '\n';
 
     // imp to prevent from leaking memory 
     delete[] A;
     delete[] B;
-    delete[] C;
-
+    delete[] C_blocked;
+    delete[] C_naive;
     return 0;
 }

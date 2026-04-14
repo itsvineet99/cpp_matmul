@@ -34,20 +34,21 @@ size_t safe_mul(size_t a, size_t b, const char* label) {
 }
 
 void matmul_naive_ptr(const double* A,
-                      const double* B,
-                      double* C,
-                      size_t m,
-                      size_t k,
-                      size_t n) {
-    for (size_t i = 0; i < m; ++i) {
-        const size_t a_row = i * k;
-        const size_t c_row = i * n;
-        for (size_t j = 0; j < n; ++j) {
-            double sum = 0.0;
-            for (size_t p = 0; p < k; ++p) {
-                sum += A[a_row + p] * B[p * n + j];
+                  const double* B,
+                  double* C,
+                  size_t m,
+                  size_t n,
+                  size_t k) {
+    for (size_t p = 0; p < m; ++p) {
+        size_t a_row = p * k;
+        size_t c_row = p * n;
+
+        for (size_t r = 0; r < k; ++r) {
+            double a_val = A[a_row + r];
+
+            for (size_t q = 0; q < n; ++q) {
+                C[c_row + q] += a_val * B[r * n + q];
             }
-            C[c_row + j] = sum;
         }
     }
 }
@@ -102,6 +103,9 @@ int main(int argc, char** argv) {
     }
     for (size_t i = 0; i < b_size; ++i) {
         B[i] = dist(rng);
+    }
+    for (size_t i = 0; i < b_size; ++i) {
+        C[i] = 0.0;
     }
 
     const auto start = std::chrono::steady_clock::now();

@@ -8,7 +8,7 @@
 *.dll
 
 # Output files / executables (idk what to say em tbh)
-adv_boxed_parallel_matmul
+adv_blocked_parallel_matmul
 basic_matmul_openmp
 matmul_ptr
 matmul_vector

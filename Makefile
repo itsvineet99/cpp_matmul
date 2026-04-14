@@ -8,15 +8,13 @@ ANYOPTION_CPP := $(THIRD_PARTY)/anyoption.cpp
 
 VECTOR_SRC := $(SRC_DIR)/matmul_vector_1d.cpp
 PTR_SRC := $(SRC_DIR)/matmul_ptr.cpp
-ADV_SRC := $(SRC_DIR)/adv_boxed_parallel_matmul.cpp
+ADV_SRC := $(SRC_DIR)/adv_blocked_parallel_matmul.cpp
 VEC2D_SRC := $(SRC_DIR)/matmul_vector_2d.cpp
-BASIC_OMP_SRC := $(SRC_DIR)/basic_matmul_openmp.cpp
 
 VECTOR_BIN := matmul_vector
 PTR_BIN := matmul_ptr
-ADV_BIN := adv_boxed_parallel_matmul
+ADV_BIN := adv_blocked_parallel_matmul
 VEC2D_BIN := matmul_vector_2d
-BASIC_OMP_BIN := basic_matmul_openmp
 
 OMP_PREFIX ?= /opt/homebrew/opt/libomp
 OMP_FLAGS := -Xpreprocessor -fopenmp -I$(OMP_PREFIX)/include -L$(OMP_PREFIX)/lib -lomp
@@ -38,8 +36,5 @@ $(ADV_BIN): $(ADV_SRC) $(ANYOPTION_CPP)
 $(VEC2D_BIN): $(VEC2D_SRC)
 	$(CXX) $(OMP_CXXFLAGS) $(OMP_FLAGS) $^ -o $@
 
-$(BASIC_OMP_BIN): $(BASIC_OMP_SRC)
-	$(CXX) $(OMP_CXXFLAGS) $(OMP_FLAGS) $^ -o $@
-
 clean:
-	rm -f $(VECTOR_BIN) $(PTR_BIN) $(ADV_BIN) $(VEC2D_BIN) $(BASIC_OMP_BIN)
+	rm -f $(VECTOR_BIN) $(PTR_BIN) $(ADV_BIN) $(VEC2D_BIN) 
