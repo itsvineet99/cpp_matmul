@@ -3,8 +3,8 @@
 In this project we implement matrix multiplication in cpp and then optimize it get best results on cpu.
 
 - The best implementation right now is adv_boxed_parallel_matmul.cpp which uses both boxed matrix multiplication and parallelization using openmp. 
-- **the least time it takes to mutliply matrix A and matrix B both with `1024x1024` dimensions and type `double` is ~140 ms.**
-- for blocked parallele matrix multiplication we found that using number of blocks NB = 128 gives us the most optimal soluction which is ~140ms for our specific dimensions of matrix.
+- **the least time it takes to mutliply matrix A and matrix B both with `1024x1024` dimensions and type `double` is ~120 ms.**
+- for blocked parallele matrix multiplication we found that using number of blocks NB = 128 gives us the most optimal soluction which is ~120ms for our specific dimensions of matrix.
 
 ## Results
 

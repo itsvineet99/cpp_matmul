@@ -44,20 +44,20 @@ void boxed_parallel_matmul(const double* A,
         throw std::invalid_argument("Invalid block configuration");
     }
 
-    int pq, p, q, r, i, j, k;
-    #pragma omp parallel for default(shared) private(pq, p, q, r, i, j, k)
-    for (pq = 0; pq < NB * NB; ++pq) {
-        p = pq / NB;
-        q = pq % NB;
-        for (r = 0; r < NB; ++r) {
-            for (i = p * NEIB; i < p * NEIB + NEIB; ++i) {
-                const int row_c = i * N;
-                for (j = q * NEIB; j < q * NEIB + NEIB; ++j) {
-                    for (k = r * NEIB; k < r * NEIB + NEIB; ++k) {
-                        C[row_c + j] += A[row_c + k] * B[k * N + j];
+    #pragma omp parallel for collapse(2) default(shared)
+    for (int p = 0; p < NB; ++p) {
+        for (int q = 0; q < NB; ++q) {
+            // The r loop is NOT collapsed, it runs sequentially for each p,q block
+            for (int r = 0; r < NB; ++r) {
+                for (int i = p * NEIB; i < p * NEIB + NEIB; ++i) {
+                    const int row_c = i * N;
+                    for (int j = q * NEIB; j < q * NEIB + NEIB; ++j) {
+                        for (int k = r * NEIB; k < r * NEIB + NEIB; ++k) {
+                            C[row_c + j] += A[row_c + k] * B[k * N + j];
+                        }
                     }
                 }
-            }
+            }        
         }
     }
 }
