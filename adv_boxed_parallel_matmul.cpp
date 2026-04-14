@@ -9,6 +9,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <omp.h>
 
 size_t parse_size(const char* value, const char* name) {
     if (!value) {

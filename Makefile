@@ -20,7 +20,7 @@ BASIC_OMP_BIN := basic_matmul_openmp
 
 OMP_PREFIX ?= /opt/homebrew/opt/libomp
 OMP_FLAGS := -Xpreprocessor -fopenmp -I$(OMP_PREFIX)/include -L$(OMP_PREFIX)/lib -lomp
-OMP_CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -pedantic
+OMP_CXXFLAGS := -std=c++17 -O0 -Wall -Wextra -pedantic
 
 .PHONY: all clean
 
