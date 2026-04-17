@@ -1,5 +1,21 @@
 # logs
 
+### date: 18/04/2026
+
+- mislogged / misinterpreted changes in last log entry. 
+- the performance gain had nothing to do with sum variable in ptr implementation in matmul_ptr.cpp. 
+- the actual gain from 1560ms to 190ms happend because of loop ordering.
+- loop ordering is where we calculate the entire row of C matrix in third loop instead of calculating single element.
+- this [commit](https://github.com/itsvineet99/cpp_matmul/commit/88d71da2af8babf92237e652ca50a17498682a28) is where i have changed implementation
+- and yes in vector implementation removing this variable backfires cause of threads needing to access the variable from main memory, when we do have local variable each thread gets its own variable so they update value in that variable so it improves performance.
+
+- the new file ptr_naive.cpp confirms that when we use loop ordering, the existance of sum variable doesn't matter much. for matrix 1024x1024 dimension having sum variable in loop ordered implementation only gives 0.41 ms of improvement
+- but for not optimized by loop ordering implementation gets some benefits from having sum variable like ~250 ms of performance gain.
+- results:
+
+![log_result.png](naive_ptr.png)
+
+
 ### date: 15/04/2026
 
 - using sum variable to store the matmul cause loss of performane in pointer implementation. rather if we directly add values in C matrix then it gives massive performance gain like from 1560ms to 190ms.
