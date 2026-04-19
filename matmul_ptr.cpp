@@ -33,24 +33,24 @@ size_t safe_mul(size_t a, size_t b, const char* label) {
     return a * b;
 }
 
-double calculate_gflops(size_t m,
-                        size_t n,
-                        size_t k,
-                        std::chrono::duration<double, std::milli> elapsed_ms) {
-    const double elapsed_seconds = elapsed_ms.count() / 1000.0;
-    if (elapsed_seconds <= 0.0) {
-        return 0.0;
+float calculate_gflops(size_t m,
+                       size_t n,
+                       size_t k,
+                       std::chrono::duration<float, std::milli> elapsed_ms) {
+    const float elapsed_seconds = elapsed_ms.count() / 1000.0f;
+    if (elapsed_seconds <= 0.0f) {
+        return 0.0f;
     }
 
-    const double flops = 2.0 * static_cast<double>(m) * static_cast<double>(n) *
-                         static_cast<double>(k);
-    return flops / elapsed_seconds / 1e9;
+    const float flops = 2.0f * static_cast<float>(m) * static_cast<float>(n) *
+                        static_cast<float>(k);
+    return flops / elapsed_seconds / 1e9f;
 }
 
 // this says naive but it ain't naive cause here we use smart trick of using different order to get performance gain 
-void matmul_naive_ptr(const double* A,
-                  const double* B,
-                  double* C,
+void matmul_naive_ptr(const float* A,
+                  const float* B,
+                  float* C,
                   size_t m,
                   size_t n,
                   size_t k) {
@@ -102,12 +102,12 @@ int main(int argc, char** argv) {
     const size_t b_size = safe_mul(k, n, "B size");
     const size_t c_size = safe_mul(m, n, "C size");
 
-    double* A = new double[a_size];
-    double* B = new double[b_size];
-    double* C = new double[c_size];
+    float* A = new float[a_size];
+    float* B = new float[b_size];
+    float* C = new float[c_size];
 
     std::mt19937 rng(12345);
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
     for (size_t i = 0; i < a_size; ++i) {
         A[i] = dist(rng);
     }
@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
         B[i] = dist(rng);
     }
     for (size_t i = 0; i < c_size; ++i) {
-        C[i] = 0.0;
+        C[i] = 0.0f;
     }
 
     const auto start = std::chrono::steady_clock::now();
@@ -123,10 +123,10 @@ int main(int argc, char** argv) {
     matmul_naive_ptr(A, B, C, m, n, k);
 
     const auto end = std::chrono::steady_clock::now();
-    const std::chrono::duration<double, std::milli> elapsed_ms = end - start;
-    const double gflops = calculate_gflops(m, n, k, elapsed_ms);
+    const std::chrono::duration<float, std::milli> elapsed_ms = end - start;
+    const float gflops = calculate_gflops(m, n, k, elapsed_ms);
 
-    double checksum = 0.0;
+    float checksum = 0.0f;
     for (size_t i = 0; i < c_size; ++i) {
         checksum += C[i];
     }

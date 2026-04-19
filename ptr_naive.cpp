@@ -34,9 +34,9 @@ size_t safe_mul(size_t a, size_t b, const char* label) {
     return a * b;
 }
 
-void ptr_w_sum(const double* A,
-                           const double* B,
-                           double* C,
+void ptr_w_sum(const float* A,
+                           const float* B,
+                           float* C,
                            size_t m,
                            size_t n,
                            size_t k) {
@@ -50,7 +50,7 @@ void ptr_w_sum(const double* A,
             
             // It is standard practice to accumulate the dot product in a local 
             // variable first, to avoid constantly writing to main memory (Matrix C)
-            double sum = 0.0;
+            float sum = 0.0f;
 
             // 3. The Inner Loop: The Dot Product (and the Cache Nightmare!)
             for (size_t r = 0; r < k; ++r) {
@@ -65,9 +65,9 @@ void ptr_w_sum(const double* A,
     }
 }
 
-void ptr_no_sum(const double* A,
-                           const double* B,
-                           double* C,
+void ptr_no_sum(const float* A,
+                           const float* B,
+                           float* C,
                            size_t m,
                            size_t n,
                            size_t k) {
@@ -80,9 +80,9 @@ void ptr_no_sum(const double* A,
     }
 }
 
-void ptr_order_no_sum(const double* A,
-                  const double* B,
-                  double* C,
+void ptr_order_no_sum(const float* A,
+                  const float* B,
+                  float* C,
                   size_t m,
                   size_t n,
                   size_t k) {
@@ -91,7 +91,7 @@ void ptr_order_no_sum(const double* A,
         size_t c_row = p * n;
 
         for (size_t r = 0; r < k; ++r) {
-            double a_val = A[a_row + r];
+            float a_val = A[a_row + r];
 
             for (size_t q = 0; q < n; ++q) {
                 C[c_row + q] += a_val * B[r * n + q];
@@ -100,9 +100,9 @@ void ptr_order_no_sum(const double* A,
     }
 }
 
-void ptr_order_w_sum(const double* A,
-                  const double* B,
-                  double* C,
+void ptr_order_w_sum(const float* A,
+                  const float* B,
+                  float* C,
                   size_t m,
                   size_t n,
                   size_t k) {
@@ -111,10 +111,10 @@ void ptr_order_w_sum(const double* A,
         size_t c_row = p * n;
 
         for (size_t r = 0; r < k; ++r) {
-            double a_val = A[a_row + r];
+            float a_val = A[a_row + r];
 
             for (size_t q = 0; q < n; ++q) {
-                double sum = C[c_row + q];
+                float sum = C[c_row + q];
                 sum += a_val * B[r * n + q];
                 C[c_row + q] = sum;
             }
@@ -122,31 +122,31 @@ void ptr_order_w_sum(const double* A,
     }
 }
 
-using PtrMatmulFn = void (*)(const double*, const double*, double*, size_t, size_t, size_t);
+using PtrMatmulFn = void (*)(const float*, const float*, float*, size_t, size_t, size_t);
 
 void benchmark_and_print(const char* name,
                          PtrMatmulFn fn,
-                         const double* A,
-                         const double* B,
-                         double* C,
+                         const float* A,
+                         const float* B,
+                         float* C,
                          size_t m,
                          size_t n,
                          size_t k,
                          size_t c_size,
-                         volatile double& checksum_sink) {
-    std::fill_n(C, c_size, 0.0);
+                         volatile float& checksum_sink) {
+    std::fill_n(C, c_size, 0.0f);
 
     const auto start = std::chrono::steady_clock::now();
     fn(A, B, C, m, n, k);
     const auto end = std::chrono::steady_clock::now();
 
-    double checksum = 0.0;
+    float checksum = 0.0f;
     for (size_t i = 0; i < c_size; ++i) {
         checksum += C[i];
     }
     checksum_sink = checksum;
 
-    const std::chrono::duration<double, std::milli> elapsed_ms = end - start;
+    const std::chrono::duration<float, std::milli> elapsed_ms = end - start;
     std::cout << name << ": " << elapsed_ms.count() << " ms\n";
 }
 
@@ -189,19 +189,19 @@ int main(int argc, char** argv) {
     const size_t b_size = safe_mul(k, n, "B size");
     const size_t c_size = safe_mul(m, n, "C size");
 
-    double* A = new double[a_size];
-    double* B = new double[b_size];
-    double* C = new double[c_size];
+    float* A = new float[a_size];
+    float* B = new float[b_size];
+    float* C = new float[c_size];
 
     std::mt19937 rng(12345);
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
     for (size_t i = 0; i < a_size; ++i) {
         A[i] = dist(rng);
     }
     for (size_t i = 0; i < b_size; ++i) {
         B[i] = dist(rng);
     }
-    volatile double checksum_sink = 0.0;
+    volatile float checksum_sink = 0.0f;
 
     benchmark_and_print("ptr_w_sum", ptr_w_sum, A, B, C, m, n, k, c_size, checksum_sink);
     benchmark_and_print("ptr_no_sum", ptr_no_sum, A, B, C, m, n, k, c_size, checksum_sink);

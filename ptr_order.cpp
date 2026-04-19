@@ -15,15 +15,15 @@ size_t safe_mul(size_t a, size_t b, const char* label) {
     return a * b;
 }
 
-void matmul_mnk(const double* A,
-                const double* B,
-                double* C,
+void matmul_mnk(const float* A,
+                const float* B,
+                float* C,
                 size_t m,
                 size_t n,
                 size_t k) {
     for (size_t p = 0; p < m; ++p) {
         for (size_t q = 0; q < n; ++q) {
-            double sum = 0.0;
+            float sum = 0.0f;
 
             for (size_t r = 0; r < k; ++r) {
                 sum += A[p * k + r] * B[r * n + q];
@@ -33,19 +33,19 @@ void matmul_mnk(const double* A,
     }
 }
 
-void matmul_mkn(const double* A,
-                const double* B,
-                double* C,
+void matmul_mkn(const float* A,
+                const float* B,
+                float* C,
                 size_t m,
                 size_t n,
                 size_t k) {
     const size_t c_size = safe_mul(m, n, "C size");
-    std::fill_n(C, c_size, 0.0);
+    std::fill_n(C, c_size, 0.0f);
 
     for (size_t p = 0; p < m; ++p) {
         for (size_t r = 0; r < k; ++r) {
             // Small optimization: store A[p, r] in a local variable to encourage the compiler to keep it in a register.
-            double a_val = A[p * k + r];
+            float a_val = A[p * k + r];
 
             for (size_t q = 0; q < n; ++q) {
                 C[p * n + q] += a_val * B[r * n + q];
@@ -54,12 +54,12 @@ void matmul_mkn(const double* A,
     }
 }
 
-using PtrMatmulFn = void (*)(const double*, const double*, double*, size_t, size_t, size_t);
+using PtrMatmulFn = void (*)(const float*, const float*, float*, size_t, size_t, size_t);
 
-double benchmark_average_ms(PtrMatmulFn fn,
-                            const double* A,
-                            const double* B,
-                            double* C,
+float benchmark_average_ms(PtrMatmulFn fn,
+                           const float* A,
+                           const float* B,
+                           float* C,
                             size_t m,
                             size_t n,
                             size_t k,
@@ -71,37 +71,37 @@ double benchmark_average_ms(PtrMatmulFn fn,
     }
 
     for (size_t run = 0; run < warmup_runs; ++run) {
-        std::fill_n(C, c_size, 0.0);
+        std::fill_n(C, c_size, 0.0f);
         fn(A, B, C, m, n, k);
     }
 
-    double total_ms = 0.0;
+    float total_ms = 0.0f;
     for (size_t run = 0; run < measured_runs; ++run) {
-        std::fill_n(C, c_size, 0.0);
+        std::fill_n(C, c_size, 0.0f);
 
         const auto start = std::chrono::steady_clock::now();
         fn(A, B, C, m, n, k);
         const auto end = std::chrono::steady_clock::now();
 
-        const std::chrono::duration<double, std::milli> elapsed_ms = end - start;
+        const std::chrono::duration<float, std::milli> elapsed_ms = end - start;
         total_ms += elapsed_ms.count();
     }
 
-    return total_ms / static_cast<double>(measured_runs);
+    return total_ms / static_cast<float>(measured_runs);
 }
 
-bool almost_equal(double lhs, double rhs, double abs_tol, double rel_tol) {
-    const double diff = std::abs(lhs - rhs);
-    const double scale = std::max(std::abs(lhs), std::abs(rhs));
+bool almost_equal(float lhs, float rhs, float abs_tol, float rel_tol) {
+    const float diff = std::abs(lhs - rhs);
+    const float scale = std::max(std::abs(lhs), std::abs(rhs));
     return diff <= abs_tol + rel_tol * scale;
 }
 
-bool compare_results(const double* lhs,
-                     const double* rhs,
+bool compare_results(const float* lhs,
+                     const float* rhs,
                      size_t c_size,
                      size_t n,
-                     double abs_tol,
-                     double rel_tol) {
+                     float abs_tol,
+                     float rel_tol) {
     for (size_t i = 0; i < c_size; ++i) {
         if (!almost_equal(lhs[i], rhs[i], abs_tol, rel_tol)) {
             const size_t row = i / n;
@@ -121,20 +121,20 @@ int main() {
     const size_t k = 1024;
     const size_t warmup_runs = 10;
     const size_t measured_runs = 20;
-    const double abs_tol = 1e-6;
-    const double rel_tol = 1e-6;
+    const float abs_tol = 1e-6f;
+    const float rel_tol = 1e-6f;
 
     const size_t a_size = safe_mul(m, k, "A size");
     const size_t b_size = safe_mul(k, n, "B size");
     const size_t c_size = safe_mul(m, n, "C size");
 
-    double* A = new double[a_size];
-    double* B = new double[b_size];
-    double* C_mnk = new double[c_size];
-    double* C_mkn = new double[c_size];
+    float* A = new float[a_size];
+    float* B = new float[b_size];
+    float* C_mnk = new float[c_size];
+    float* C_mkn = new float[c_size];
 
     std::mt19937 rng(12345);
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
     for (size_t i = 0; i < a_size; ++i) {
         A[i] = dist(rng);
     }
@@ -142,9 +142,9 @@ int main() {
         B[i] = dist(rng);
     }
 
-    const double mnk_time = benchmark_average_ms(
+    const float mnk_time = benchmark_average_ms(
         matmul_mnk, A, B, C_mnk, m, n, k, c_size, warmup_runs, measured_runs);
-    const double mkn_time = benchmark_average_ms(
+    const float mkn_time = benchmark_average_ms(
         matmul_mkn, A, B, C_mkn, m, n, k, c_size, warmup_runs, measured_runs);
 
     std::cout << "matmul_mnk: " << mnk_time << " ms\n";

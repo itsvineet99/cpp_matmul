@@ -1,7 +1,9 @@
 #include "third_party/anyoption/anyoption.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <iostream>
@@ -34,29 +36,52 @@ size_t safe_mul(size_t a, size_t b, const char* label) {
     return a * b;
 }
 
-double calculate_gflops(size_t m,
-                        size_t n,
-                        size_t k,
-                        std::chrono::duration<double, std::milli> elapsed_ms) {
-    const double elapsed_seconds = elapsed_ms.count() / 1000.0;
-    if (elapsed_seconds <= 0.0) {
-        return 0.0;
+float calculate_gflops(size_t m,
+                       size_t n,
+                       size_t k,
+                       std::chrono::duration<float, std::milli> elapsed_ms) {
+    const float elapsed_seconds = elapsed_ms.count() / 1000.0f;
+    if (elapsed_seconds <= 0.0f) {
+        return 0.0f;
     }
 
-    const double flops = 2.0 * static_cast<double>(m) * static_cast<double>(n) *
-                         static_cast<double>(k);
-    return flops / elapsed_seconds / 1e9;
+    const float flops = 2.0f * static_cast<float>(m) * static_cast<float>(n) *
+                        static_cast<float>(k);
+    return flops / elapsed_seconds / 1e9f;
 }
 
-void naive_matmul(const double* A,
-                  const double* B,
-                  double* C,
+float calculate_max_relative_error(const float* reference,
+                                   const float* actual,
+                                    size_t size) {
+    const float min_denominator = 1e-12f;
+    float max_relative_error = 0.0f;
+
+    for (size_t i = 0; i < size; ++i) {
+        const float diff = std::abs(reference[i] - actual[i]);
+        const float scale = std::max(std::abs(reference[i]), min_denominator);
+        const float relative_error = diff / scale;
+        max_relative_error = std::max(max_relative_error, relative_error);
+    }
+
+    return max_relative_error;
+}
+
+float safe_ratio(float numerator, float denominator) {
+    if (denominator == 0.0f) {
+        return 0.0f;
+    }
+    return numerator / denominator;
+}
+
+void naive_matmul(const float* A,
+                  const float* B,
+                  float* C,
                   size_t m,
                   size_t n,
                   size_t k) {
     for (size_t p = 0; p < m; ++p) {
         for (size_t q = 0; q < n; ++q) {
-            double sum = 0.0;
+            float sum = 0.0f;
 
             for (size_t r = 0; r < k; ++r) {
                 sum += A[p * k + r] * B[r * n + q];
@@ -66,9 +91,9 @@ void naive_matmul(const double* A,
     }
 }
 
-void boxed_parallel_matmul(const double* A,
-                           const double* B,
-                           double* C,
+void boxed_parallel_matmul(const float* A,
+                           const float* B,
+                           float* C,
                            int N,
                            int NB,
                            int BS) {
@@ -84,7 +109,7 @@ void boxed_parallel_matmul(const double* A,
                 for (int i = p * BS; i < p * BS + BS; ++i) {
                     const int row_c = i * N;
                     for (int k = r * BS; k < r * BS + BS; ++k) {
-                        double a_val = A[row_c + k]; 
+                        float a_val = A[row_c + k]; 
                         
                         for (int j = q * BS; j < q * BS + BS; ++j) {
                             C[row_c + j] += a_val * B[k * N + j];
@@ -142,13 +167,13 @@ int main(int argc, char** argv) {
     const size_t b_size = safe_mul(k, n, "B size");
     const size_t c_size = safe_mul(m, n, "C size");
 
-    double* A = new double[a_size];
-    double* B = new double[b_size];
-    double* C_blocked = new double[c_size];
-    double* C_naive = new double[c_size];
+    float* A = new float[a_size];
+    float* B = new float[b_size];
+    float* C_blocked = new float[c_size];
+    float* C_naive = new float[c_size];
 
     std::mt19937 rng(12345);
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    std::uniform_real_distribution<float> dist(-20.0f, 20.0f);
     for (size_t i = 0; i < a_size; ++i) {
         A[i] = dist(rng);
     }
@@ -156,8 +181,8 @@ int main(int argc, char** argv) {
         B[i] = dist(rng);
     }
     for (size_t i = 0; i < c_size; ++i) {
-        C_blocked[i] = 0.0;
-        C_naive[i] = 0.0;
+        C_blocked[i] = 0.0f;
+        C_naive[i] = 0.0f;
     }
 
     int N = m; // number of elements in each dimensino (in all dimensions we have same number of elements)
@@ -168,37 +193,42 @@ int main(int argc, char** argv) {
     const auto b_start = std::chrono::steady_clock::now();
     boxed_parallel_matmul(A, B, C_blocked, N, NB, BS);
     const auto b_end = std::chrono::steady_clock::now();
-    const std::chrono::duration<double, std::milli> b_elapsed_ms = b_end - b_start;
+    const std::chrono::duration<float, std::milli> b_elapsed_ms = b_end - b_start;
 
     // naive matrix multiplication
     const auto n_start = std::chrono::steady_clock::now();
     naive_matmul(A, B, C_naive, m, n, k);
     const auto n_end = std::chrono::steady_clock::now();
-    const std::chrono::duration<double, std::milli> n_elapsed_ms = n_end - n_start;
+    const std::chrono::duration<float, std::milli> n_elapsed_ms = n_end - n_start;
 
-    const double blocked_gflops = calculate_gflops(m, n, k, b_elapsed_ms);
-    const double naive_gflops = calculate_gflops(m, n, k, n_elapsed_ms);
+    const float blocked_gflops = calculate_gflops(m, n, k, b_elapsed_ms);
+    const float naive_gflops = calculate_gflops(m, n, k, n_elapsed_ms);
+    const float blocked_speedup_vs_naive =
+        safe_ratio(n_elapsed_ms.count(), b_elapsed_ms.count());
 
-    double checksum_blocked = 0.0;
-    double checksum_naive = 0.0;
-    for (size_t i = 0; i < c_size; ++i) {
-        checksum_blocked += C_blocked[i];
-        checksum_naive += C_naive[i];
-    }
+    const float epsilon = 1e-6f;
+    const float max_relative_error =
+        calculate_max_relative_error(C_naive, C_blocked, c_size);
+    const bool result_is_correct = max_relative_error < epsilon;
 
-    std::cout << "Computed blocked C (" << m << "x" << n << ") with checksum: "
-              << checksum_blocked << '\n';
     std::cout << "Matmul time for blocked implementation (ms): " << b_elapsed_ms.count()
               << ", GigaFLOPS: " << blocked_gflops << '\n';
-    std::cout << "Computed naive C (" << m << "x" << n << ") with checksum: "
-              << checksum_naive << '\n';
     std::cout << "Matmul time for naive implementation (ms): " << n_elapsed_ms.count()
               << ", GigaFLOPS: " << naive_gflops << '\n';
+    std::cout << "Blocked speedup vs naive: "
+              << blocked_speedup_vs_naive << "x\n";
+    std::cout << "Maximum relative error (blocked vs naive): "
+              << max_relative_error << '\n';
+    if (result_is_correct) {
+        std::cout << "Result is correct.\n";
+    } else {
+        std::cout << "There was some error in matrix multiplication.\n";
+    }
 
     // imp to prevent from leaking memory 
     delete[] A;
     delete[] B;
     delete[] C_blocked;
     delete[] C_naive;
-    return 0;
+    return result_is_correct ? 0 : 1;
 }
