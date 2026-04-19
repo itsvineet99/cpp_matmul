@@ -13,6 +13,8 @@ basic_matmul_openmp
 matmul_ptr
 matmul_vector
 matmul_vector_2d
+ptr_naive
+ptr_order
 randoms/
 
 # Executables

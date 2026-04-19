@@ -55,15 +55,13 @@ void naive_matmul(const double* A,
                   size_t n,
                   size_t k) {
     for (size_t p = 0; p < m; ++p) {
-        size_t a_row = p * k;
-        size_t c_row = p * n;
+        for (size_t q = 0; q < n; ++q) {
+            double sum = 0.0;
 
-        for (size_t r = 0; r < k; ++r) {
-            double a_val = A[a_row + r];
-
-            for (size_t q = 0; q < n; ++q) {
-                C[c_row + q] += a_val * B[r * n + q];
-            }
+            for (size_t r = 0; r < k; ++r) {
+                sum += A[p * k + r] * B[r * n + q];
+            }            
+            C[p * n + q] = sum;
         }
     }
 }
@@ -73,8 +71,8 @@ void boxed_parallel_matmul(const double* A,
                            double* C,
                            int N,
                            int NB,
-                           int NEIB) {
-    if (NB <= 0 || (N % NB) != 0 || NEIB != (N / NB)) {
+                           int BS) {
+    if (NB <= 0 || (N % NB) != 0 || BS != (N / NB)) {
         throw std::invalid_argument("Invalid block configuration");
     }
 
@@ -83,11 +81,13 @@ void boxed_parallel_matmul(const double* A,
         for (int q = 0; q < NB; ++q) {
             // The r loop is NOT collapsed, it runs sequentially for each p,q block
             for (int r = 0; r < NB; ++r) {
-                for (int i = p * NEIB; i < p * NEIB + NEIB; ++i) {
+                for (int i = p * BS; i < p * BS + BS; ++i) {
                     const int row_c = i * N;
-                    for (int j = q * NEIB; j < q * NEIB + NEIB; ++j) {
-                        for (int k = r * NEIB; k < r * NEIB + NEIB; ++k) {
-                            C[row_c + j] += A[row_c + k] * B[k * N + j];
+                    for (int k = r * BS; k < r * BS + BS; ++k) {
+                        double a_val = A[row_c + k]; 
+                        
+                        for (int j = q * BS; j < q * BS + BS; ++j) {
+                            C[row_c + j] += a_val * B[k * N + j];
                         }
                     }
                 }
@@ -162,11 +162,11 @@ int main(int argc, char** argv) {
 
     int N = m; // number of elements in each dimensino (in all dimensions we have same number of elements)
     int NB = 128; // number of blocks, here we have found after experimenting that 128 is obptimal number of blocks for this specific dimensions of matrix.
-    int NEIB = N/NB; // number of elements in each block 
+    int BS = N/NB; // number of elements in each block 1024/128 = 8
 
     // blocked parallel matrix multiplication 
     const auto b_start = std::chrono::steady_clock::now();
-    boxed_parallel_matmul(A, B, C_blocked, N, NB, NEIB);
+    boxed_parallel_matmul(A, B, C_blocked, N, NB, BS);
     const auto b_end = std::chrono::steady_clock::now();
     const std::chrono::duration<double, std::milli> b_elapsed_ms = b_end - b_start;
 

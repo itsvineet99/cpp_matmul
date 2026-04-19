@@ -47,6 +47,7 @@ double calculate_gflops(size_t m,
     return flops / elapsed_seconds / 1e9;
 }
 
+// this says naive but it ain't naive cause here we use smart trick of using different order to get performance gain 
 void matmul_naive_ptr(const double* A,
                   const double* B,
                   double* C,
@@ -54,14 +55,9 @@ void matmul_naive_ptr(const double* A,
                   size_t n,
                   size_t k) {
     for (size_t p = 0; p < m; ++p) {
-        size_t a_row = p * k;
-        size_t c_row = p * n;
-
         for (size_t r = 0; r < k; ++r) {
-            double a_val = A[a_row + r];
-
             for (size_t q = 0; q < n; ++q) {
-                C[c_row + q] += a_val * B[r * n + q];
+                C[p * n + q] +=  A[p * k + r] * B[r * n + q];
             }
         }
     }
