@@ -1,5 +1,10 @@
 # logs
 
+### date: 20/04/2026
+
+- figured out best values for TM = 32, TN = 128, TK = 16 using autotune.py
+- applied custom tiling 
+
 ### date: 18/04/2026
 
 - mislogged / misinterpreted changes in last log entry. 

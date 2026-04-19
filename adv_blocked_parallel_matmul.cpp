@@ -73,6 +73,41 @@ float safe_ratio(float numerator, float denominator) {
     return numerator / denominator;
 }
 
+template <typename MatmulFn>
+float benchmark_average_ms(MatmulFn fn,
+                           const float* A,
+                           const float* B,
+                           float* C,
+                           size_t m,
+                           size_t n,
+                           size_t k,
+                           size_t c_size,
+                           size_t warmup_runs,
+                           size_t measured_runs) {
+    if (measured_runs == 0) {
+        throw std::invalid_argument("measured_runs must be greater than zero");
+    }
+
+    for (size_t run = 0; run < warmup_runs; ++run) {
+        std::fill_n(C, c_size, 0.0f);
+        fn(A, B, C, m, n, k);
+    }
+
+    float total_ms = 0.0f;
+    for (size_t run = 0; run < measured_runs; ++run) {
+        std::fill_n(C, c_size, 0.0f);
+
+        const auto start = std::chrono::steady_clock::now();
+        fn(A, B, C, m, n, k);
+        const auto end = std::chrono::steady_clock::now();
+
+        const std::chrono::duration<float, std::milli> elapsed_ms = end - start;
+        total_ms += elapsed_ms.count();
+    }
+
+    return total_ms / static_cast<float>(measured_runs);
+}
+
 void naive_matmul(const float* A,
                   const float* B,
                   float* C,
@@ -91,32 +126,49 @@ void naive_matmul(const float* A,
     }
 }
 
-void boxed_parallel_matmul(const float* A,
-                           const float* B,
-                           float* C,
-                           int N,
-                           int NB,
-                           int BS) {
-    if (NB <= 0 || (N % NB) != 0 || BS != (N / NB)) {
-        throw std::invalid_argument("Invalid block configuration");
+template <size_t TM, size_t TN, size_t TK>
+void blocked_parallel_matmul(const float* A,
+                             const float* B,
+                             float* C,
+                             size_t m,
+                             size_t n,
+                             size_t k) {
+    // Standard safety checks...
+    static_assert(TM > 0 && TN > 0 && TK > 0, "Tile sizes must be > 0");
+
+    if ((m % TM) != 0 || (n % TN) != 0 || (k % TK) != 0) {
+        throw std::invalid_argument("Dimensions must be divisible by tile sizes");
     }
 
+    const size_t m_tiles = m / TM;
+    const size_t n_tiles = n / TN;
+    const size_t k_tiles = k / TK; // New: Number of tiles along K
+
     #pragma omp parallel for collapse(2) default(shared)
-    for (int p = 0; p < NB; ++p) {
-        for (int q = 0; q < NB; ++q) {
-            // The r loop is NOT collapsed, it runs sequentially for each p,q block
-            for (int r = 0; r < NB; ++r) {
-                for (int i = p * BS; i < p * BS + BS; ++i) {
-                    const int row_c = i * N;
-                    for (int k = r * BS; k < r * BS + BS; ++k) {
-                        float a_val = A[row_c + k]; 
-                        
-                        for (int j = q * BS; j < q * BS + BS; ++j) {
-                            C[row_c + j] += a_val * B[k * N + j];
+    for (size_t p = 0; p < m_tiles; ++p) {
+        for (size_t q = 0; q < n_tiles; ++q) {
+            const size_t i_begin = p * TM;
+            const size_t j_begin = q * TN;
+
+            for (size_t t_k = 0; t_k < k_tiles; ++t_k) {
+                const size_t r_begin = t_k * TK;
+
+                // The Micro-Kernel (Now constrained by TM, TN, and TK)
+                for (size_t i = i_begin; i < i_begin + TM; ++i) {
+                    const size_t a_row = i * k;
+                    const size_t c_row = i * n;
+
+                    for (size_t r = r_begin; r < r_begin + TK; ++r) {
+                        const float a_val = A[a_row + r];
+                        const size_t b_row = r * n;
+
+                        for (size_t j = j_begin; j < j_begin + TN; ++j) {
+                            C[c_row + j] += a_val * B[b_row + j];
                         }
                     }
                 }
-            }        
+            } 
+            
         }
     }
 }
@@ -156,10 +208,26 @@ int main(int argc, char** argv) {
     const size_t n = parse_size(n_val, "n");
     const size_t k = parse_size(k_val, "k");
 
-    if (m == n && n == k) {
-        std::cout << "Boxed matmul can be applied.\n";
+    #ifndef TILE_M
+    #define TILE_M 32
+    #endif
+    #ifndef TILE_N
+    #define TILE_N 128
+    #endif
+    #ifndef TILE_K
+    #define TILE_K 16
+    #endif
+
+    constexpr size_t TM = TILE_M;
+    constexpr size_t TN = TILE_N;
+    constexpr size_t TK = TILE_K;
+    const size_t warmup_runs = 10;
+    const size_t measured_runs = 20;
+
+    if ((m % TM) == 0 && (n % TN) == 0 && (k % TK) == 0) {
+        std::cout << "Blocked matmul can be applied.\n";
     } else {
-        std::cout << "Boxed matmul can not be applied.\n";
+        std::cout << "Blocked matmul can not be applied.\n";
         return 1;
     }
 
@@ -185,26 +253,29 @@ int main(int argc, char** argv) {
         C_naive[i] = 0.0f;
     }
 
-    int N = m; // number of elements in each dimensino (in all dimensions we have same number of elements)
-    int NB = 128; // number of blocks, here we have found after experimenting that 128 is obptimal number of blocks for this specific dimensions of matrix.
-    int BS = N/NB; // number of elements in each block 1024/128 = 8
+    const auto blocked_runner = [](const float* A,
+                                   const float* B,
+                                   float* C,
+                                   size_t m,
+                                   size_t n,
+                                   size_t k) {
+        blocked_parallel_matmul<TM, TN, TK>(A, B, C, m, n, k);
+    };
 
-    // blocked parallel matrix multiplication 
-    const auto b_start = std::chrono::steady_clock::now();
-    boxed_parallel_matmul(A, B, C_blocked, N, NB, BS);
-    const auto b_end = std::chrono::steady_clock::now();
-    const std::chrono::duration<float, std::milli> b_elapsed_ms = b_end - b_start;
+    const float blocked_avg_ms = benchmark_average_ms(
+        blocked_runner, A, B, C_blocked, m, n, k, c_size, warmup_runs, measured_runs);
+    const float naive_avg_ms = benchmark_average_ms(
+        naive_matmul, A, B, C_naive, m, n, k, c_size, warmup_runs, measured_runs);
 
-    // naive matrix multiplication
-    const auto n_start = std::chrono::steady_clock::now();
-    naive_matmul(A, B, C_naive, m, n, k);
-    const auto n_end = std::chrono::steady_clock::now();
-    const std::chrono::duration<float, std::milli> n_elapsed_ms = n_end - n_start;
-
+    const std::chrono::duration<float, std::milli> b_elapsed_ms(blocked_avg_ms);
+    const std::chrono::duration<float, std::milli> n_elapsed_ms(naive_avg_ms);
     const float blocked_gflops = calculate_gflops(m, n, k, b_elapsed_ms);
     const float naive_gflops = calculate_gflops(m, n, k, n_elapsed_ms);
+
     const float blocked_speedup_vs_naive =
         safe_ratio(n_elapsed_ms.count(), b_elapsed_ms.count());
+    const float blocked_gflops_ratio_vs_naive =
+        safe_ratio(blocked_gflops, naive_gflops);
 
     const float epsilon = 1e-6f;
     const float max_relative_error =
@@ -215,8 +286,12 @@ int main(int argc, char** argv) {
               << ", GigaFLOPS: " << blocked_gflops << '\n';
     std::cout << "Matmul time for naive implementation (ms): " << n_elapsed_ms.count()
               << ", GigaFLOPS: " << naive_gflops << '\n';
+    std::cout << "benchmark_config: warmup_runs=" << warmup_runs
+              << ", measured_runs=" << measured_runs << '\n';
     std::cout << "Blocked speedup vs naive: "
               << blocked_speedup_vs_naive << "x\n";
+    std::cout << "Blocked GFLOPS ratio vs naive: "
+              << blocked_gflops_ratio_vs_naive << "x\n";
     std::cout << "Maximum relative error (blocked vs naive): "
               << max_relative_error << '\n';
     if (result_is_correct) {
