@@ -1,30 +1,28 @@
 #include "third_party/anyoption/anyoption.h"
+#include "matmul_utils.h"
 
-#include <cerrno>
 #include <chrono>
 #include <cstddef>
-#include <cstdlib>
 #include <iostream>
-#include <limits>
 #include <random>
 #include <stdexcept>
-#include <string>
 #include <vector>
 
-// Naive row-major matrix multiplication: C = A (m x k) * B (k x n).
-std::vector<float> matmul_naive(const std::vector<float>& A,
-                                const std::vector<float>& B,
-                                 size_t m,
-                                 size_t k,
-                                 size_t n) {
-    if (A.size() != m * k) {
+void matmul_vector_1d(const std::vector<float>& A,
+                      const std::vector<float>& B,
+                      std::vector<float>& C,
+                      size_t m,
+                      size_t n,
+                      size_t k) {
+    if (A.size() != safe_mul(m, k, "A size")) {
         throw std::invalid_argument("A size does not match m*k");
     }
-    if (B.size() != k * n) {
+    if (B.size() != safe_mul(k, n, "B size")) {
         throw std::invalid_argument("B size does not match k*n");
     }
-
-    std::vector<float> C(m * n, 0.0f);
+    if (C.size() != safe_mul(m, n, "C size")) {
+        throw std::invalid_argument("C size does not match m*n");
+    }
 
     // Naive i-j-k triple loop.
     for (size_t i = 0; i < m; ++i) {
@@ -36,45 +34,23 @@ std::vector<float> matmul_naive(const std::vector<float>& A,
             C[i * n + j] = sum;
         }
     }
-
-    return C;
 }
 
-size_t parse_size(const char* value, const char* name) {
-    if (!value) {
-        throw std::invalid_argument(std::string("Missing value for -") + name);
+void matmul_naive_ptr(const float* A,
+                      const float* B,
+                      float* C,
+                      size_t m,
+                      size_t n,
+                      size_t k) {
+    for (size_t p = 0; p < m; ++p) {
+        for (size_t q = 0; q < n; ++q) {
+            float sum = 0.0f;
+            for (size_t r = 0; r < k; ++r) {
+                sum += A[p * k + r] * B[r * n + q];
+            }
+            C[p * n + q] = sum;
+        }
     }
-    errno = 0;
-    char* end = nullptr;
-    unsigned long long parsed = std::strtoull(value, &end, 10); // string to unsigned long long vonversion 
-    if (errno != 0 || end == value || *end != '\0') {
-        throw std::invalid_argument(std::string("Invalid integer for -") + name);
-    }
-    if (parsed <= 0 || parsed > std::numeric_limits<size_t>::max()) {
-        throw std::invalid_argument(std::string("Out-of-range value for -") + name);
-    }
-    return static_cast<size_t>(parsed);
-}
-
-size_t safe_mul(size_t a, size_t b, const char* label) {
-    if (a != 0 && b > std::numeric_limits<size_t>::max() / a) {
-        throw std::overflow_error(std::string("Overflow computing ") + label);
-    }
-    return a * b;
-}
-
-float calculate_gflops(size_t m,
-                       size_t n,
-                       size_t k,
-                       std::chrono::duration<float, std::milli> elapsed_ms) {
-    const float elapsed_seconds = elapsed_ms.count() / 1000.0f;
-    if (elapsed_seconds <= 0.0f) {
-        return 0.0f;
-    }
-
-    const float flops = 2.0f * static_cast<float>(m) * static_cast<float>(n) *
-                        static_cast<float>(k);
-    return flops / elapsed_seconds / 1e9f;
 }
 
 int main(int argc, char** argv) {
@@ -111,6 +87,9 @@ int main(int argc, char** argv) {
     const size_t m = parse_size(m_val, "m");
     const size_t n = parse_size(n_val, "n");
     const size_t k = parse_size(k_val, "k");
+    const size_t warmup_runs = 10;
+    const size_t measured_runs = 20;
+    const float epsilon = 1e-6f;
 
     const size_t a_size = safe_mul(m, k, "A size");
     const size_t b_size = safe_mul(k, n, "B size");
@@ -118,7 +97,8 @@ int main(int argc, char** argv) {
 
     std::vector<float> A(a_size);
     std::vector<float> B(b_size);
-    std::vector<float> C;
+    std::vector<float> C_vector(c_size);
+    std::vector<float> C_naive(c_size);
 
     // Deterministic random initialization.
     std::mt19937 rng(12345);
@@ -130,24 +110,70 @@ int main(int argc, char** argv) {
         B[i] = dist(rng);
     }
 
-    const auto start = std::chrono::steady_clock::now();
+    const auto vector_runner = [&A, &B, &C_vector](const float*,
+                                                   const float*,
+                                                   float*,
+                                                   size_t m,
+                                                   size_t n,
+                                                   size_t k) {
+        matmul_vector_1d(A, B, C_vector, m, n, k);
+    };
 
-    C = matmul_naive(A, B, m, k, n);
+    const float vector_avg_ms = benchmark_average_ms(
+        vector_runner,
+        A.data(),
+        B.data(),
+        C_vector.data(),
+        m,
+        n,
+        k,
+        c_size,
+        warmup_runs,
+        measured_runs);
+    const float naive_avg_ms = benchmark_average_ms(
+        matmul_naive_ptr,
+        A.data(),
+        B.data(),
+        C_naive.data(),
+        m,
+        n,
+        k,
+        c_size,
+        warmup_runs,
+        measured_runs);
 
-    const auto end = std::chrono::steady_clock::now();
-    const std::chrono::duration<float, std::milli> elapsed_ms = end - start;
-    const float gflops = calculate_gflops(m, n, k, elapsed_ms);
+    const std::chrono::duration<float, std::milli> vector_elapsed_ms(vector_avg_ms);
+    const std::chrono::duration<float, std::milli> naive_elapsed_ms(naive_avg_ms);
+    const float vector_gflops = calculate_gflops(m, n, k, vector_elapsed_ms);
+    const float naive_gflops = calculate_gflops(m, n, k, naive_elapsed_ms);
+    const float vector_speedup_vs_naive =
+        safe_ratio(naive_elapsed_ms.count(), vector_elapsed_ms.count());
+    const float vector_gflops_ratio_vs_naive =
+        safe_ratio(vector_gflops, naive_gflops);
 
-    // Small checksum to keep output compact for large matrices.
-    float checksum = 0.0f;
-    for (size_t i = 0; i < c_size; ++i) {
-        checksum += C[i];
+    const float max_relative_error =
+        calculate_max_relative_error(C_naive.data(), C_vector.data(), c_size);
+    const bool result_is_correct = max_relative_error < epsilon;
+
+    std::cout << "Matmul time for vector implementation (ms): "
+              << vector_elapsed_ms.count()
+              << ", GigaFLOPS: " << vector_gflops << '\n';
+    std::cout << "Matmul time for naive pointer implementation (ms): "
+              << naive_elapsed_ms.count()
+              << ", GigaFLOPS: " << naive_gflops << '\n';
+    std::cout << "benchmark_config: warmup_runs=" << warmup_runs
+              << ", measured_runs=" << measured_runs << '\n';
+    std::cout << "Vector speedup vs naive pointer: "
+              << vector_speedup_vs_naive << "x\n";
+    std::cout << "Vector GFLOPS ratio vs naive pointer: "
+              << vector_gflops_ratio_vs_naive << "x\n";
+    std::cout << "Maximum relative error (vector vs naive pointer): "
+              << max_relative_error << '\n';
+    if (result_is_correct) {
+        std::cout << "Result is correct.\n";
+    } else {
+        std::cout << "There was some error in matrix multiplication.\n";
     }
 
-    std::cout << "Computed C (" << m << "x" << n << ") with checksum: "
-              << checksum << '\n';
-    std::cout << "Matmul time (ms): " << elapsed_ms.count()
-              << ", GigaFLOPS: " << gflops << '\n';
-
-    return 0;
+    return result_is_correct ? 0 : 1;
 }

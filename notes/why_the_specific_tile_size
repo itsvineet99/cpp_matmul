@@ -1,0 +1,40 @@
+# why does TM=32, TN=128, TK=16 works so well?
+
+> this is answer given by geminin
+
+The configuration `TM=32, TN=128, TK=16` is a textbook example of a highly tuned, asymmetric macro-kernel. It perfectly exploits the physical quirks of the Apple M1's ARM architecture. 
+
+When you run your autotuner, the compiler is desperately trying to balance three different hardware bottlenecks: **Cache Size, Memory Bandwidth, and Vectorization.** This specific configuration strikes the perfect balance. Here is the exact hardware math behind why it won.
+
+---
+
+### 1. The "Wide and Flat" Inner Loop (`TN = 128`)
+The most important rule of loop optimization is to make the innermost loop as long as possible. Your innermost loop iterates over `j` (which corresponds to `TN`).
+
+* **Vectorization (ARM NEON):** The M1 uses 128-bit vector registers that process 4 floats simultaneously. By making `TN = 128`, the compiler can chop that loop into exactly 32 seamless vector instructions. This creates a massive, uninterrupted pipeline of math. 
+* **Cache Line Alignment:** A standard CPU cache line is 64 bytes. Since a float is 4 bytes, one cache line holds 16 floats. Because 128 is perfectly divisible by 16, every time the CPU fetches a row of Matrix B or C, it pulls exactly 8 full cache lines with **zero wasted bytes**.
+
+### 2. Prioritizing Matrix C (`TM = 32`, `TN = 128`)
+In the equation $C = A \times B$, Matrix C is the most expensive piece of memory because it is the only matrix that is **read and written** (`C[..] += ...`). Matrices A and B are read-only. 
+
+Because C is so expensive to update, the compiler wants to load a large chunk of C into the cache, do as much math on it as possible, and only write it back to RAM once.
+* Your C block is $32 \times 128 = 4096$ floats. 
+* Your A block is $32 \times 16 = 512$ floats.
+* Your B block is $16 \times 128 = 2048$ floats.
+
+By making the C block the largest piece of the pie, you ensure the CPU spends the vast majority of its time doing math inside the L1 cache, rather than waiting for write-backs to main memory.
+
+### 3. The "Skinny" Feeder Strip (`TK = 16`)
+You might wonder why `TK` is so small compared to the others. `TK` controls how deep the dot product goes before taking a breath. 
+
+If you made `TK` huge (e.g., 128), you would drag massive blocks of A and B into the cache, which would inevitably evict your precious block of C. By keeping `TK` small (16), you are streaming Matrix A and Matrix B through the cache in thin, fast "ribbons." They come in, do their math against the hot Matrix C block, and are instantly discarded to make room for the next ribbon.
+
+### 4. The 20% L1 Cache Sweet Spot
+Let's calculate the exact memory footprint of this configuration in the M1's 128 KB L1 Data Cache:
+
+$$Total Floats = (32 \times 16) + (16 \times 128) + (32 \times 128) = 6,656$$
+$$Total Bytes = 6,656 \times 4 = \mathbf{26,624 \text{ Bytes } (\approx 26.6 \text{ KB})}$$
+
+You are using exactly **20% of your L1 cache**. 
+
+Why is 20% better than 100%? If you fill the entire L1 cache, the CPU's **Hardware Prefetcher** (the predictive chip that guesses what memory you need next and loads it in the background) has no room to work. It will start accidentally overwriting data you are currently using. 26 KB leaves a massive buffer for the M1's aggressive prefetcher to stage the next blocks of A and B while you are busy calculating the current ones.

@@ -1,112 +1,12 @@
 #include "third_party/anyoption/anyoption.h"
+#include "matmul_utils.h"
 
-#include <algorithm>
-#include <cerrno>
 #include <chrono>
-#include <cmath>
 #include <cstddef>
-#include <cstdlib>
 #include <iostream>
-#include <limits>
 #include <random>
 #include <stdexcept>
-#include <string>
 #include <omp.h>
-
-size_t parse_size(const char* value, const char* name) {
-    if (!value) {
-        throw std::invalid_argument(std::string("Missing value for -") + name);
-    }
-    errno = 0;
-    char* end = nullptr;
-    unsigned long long parsed = std::strtoull(value, &end, 10);
-    if (errno != 0 || end == value || *end != '\0') {
-        throw std::invalid_argument(std::string("Invalid integer for -") + name);
-    }
-    if (parsed == 0 || parsed > std::numeric_limits<size_t>::max()) {
-        throw std::invalid_argument(std::string("Out-of-range value for -") + name);
-    }
-    return static_cast<size_t>(parsed);
-}
-
-size_t safe_mul(size_t a, size_t b, const char* label) {
-    if (a != 0 && b > std::numeric_limits<size_t>::max() / a) {
-        throw std::overflow_error(std::string("Overflow computing ") + label);
-    }
-    return a * b;
-}
-
-float calculate_gflops(size_t m,
-                       size_t n,
-                       size_t k,
-                       std::chrono::duration<float, std::milli> elapsed_ms) {
-    const float elapsed_seconds = elapsed_ms.count() / 1000.0f;
-    if (elapsed_seconds <= 0.0f) {
-        return 0.0f;
-    }
-
-    const float flops = 2.0f * static_cast<float>(m) * static_cast<float>(n) *
-                        static_cast<float>(k);
-    return flops / elapsed_seconds / 1e9f;
-}
-
-float calculate_max_relative_error(const float* reference,
-                                   const float* actual,
-                                    size_t size) {
-    const float min_denominator = 1e-12f;
-    float max_relative_error = 0.0f;
-
-    for (size_t i = 0; i < size; ++i) {
-        const float diff = std::abs(reference[i] - actual[i]);
-        const float scale = std::max(std::abs(reference[i]), min_denominator);
-        const float relative_error = diff / scale;
-        max_relative_error = std::max(max_relative_error, relative_error);
-    }
-
-    return max_relative_error;
-}
-
-float safe_ratio(float numerator, float denominator) {
-    if (denominator == 0.0f) {
-        return 0.0f;
-    }
-    return numerator / denominator;
-}
-
-template <typename MatmulFn>
-float benchmark_average_ms(MatmulFn fn,
-                           const float* A,
-                           const float* B,
-                           float* C,
-                           size_t m,
-                           size_t n,
-                           size_t k,
-                           size_t c_size,
-                           size_t warmup_runs,
-                           size_t measured_runs) {
-    if (measured_runs == 0) {
-        throw std::invalid_argument("measured_runs must be greater than zero");
-    }
-
-    for (size_t run = 0; run < warmup_runs; ++run) {
-        std::fill_n(C, c_size, 0.0f);
-        fn(A, B, C, m, n, k);
-    }
-
-    float total_ms = 0.0f;
-    for (size_t run = 0; run < measured_runs; ++run) {
-        std::fill_n(C, c_size, 0.0f);
-
-        const auto start = std::chrono::steady_clock::now();
-        fn(A, B, C, m, n, k);
-        const auto end = std::chrono::steady_clock::now();
-
-        const std::chrono::duration<float, std::milli> elapsed_ms = end - start;
-        total_ms += elapsed_ms.count();
-    }
-
-    return total_ms / static_cast<float>(measured_runs);
-}
 
 void naive_matmul(const float* A,
                   const float* B,
@@ -144,6 +44,9 @@ void blocked_parallel_matmul(const float* A,
     const size_t n_tiles = n / TN;
     const size_t k_tiles = k / TK; // New: Number of tiles along K
 
+    // predefining a variable in previous loop saves us from calculating the same 
+    // each time in next loop (small optimization technique) plus it forces compiler 
+    // to save that variable in register for faster access.
     #pragma omp parallel for collapse(2) default(shared)
     for (size_t p = 0; p < m_tiles; ++p) {
         for (size_t q = 0; q < n_tiles; ++q) {
@@ -153,7 +56,7 @@ void blocked_parallel_matmul(const float* A,
             for (size_t t_k = 0; t_k < k_tiles; ++t_k) {
                 const size_t r_begin = t_k * TK;
 
-                // The Micro-Kernel (Now constrained by TM, TN, and TK)
+                // The Micro-Kernel (constrained by TM, TN, and TK)
                 for (size_t i = i_begin; i < i_begin + TM; ++i) {
                     const size_t a_row = i * k;
                     const size_t c_row = i * n;

@@ -15,6 +15,7 @@ matmul_vector
 matmul_vector_2d
 ptr_naive
 ptr_order
+naive_ptr
 randoms/
 
 # Executables
@@ -38,3 +39,6 @@ cmake_install.cmake
 
 # OS files
 .DS_Store
+
+# py cahce
+__pycache__/
