@@ -1,5 +1,11 @@
 # logs
 
+### date: 21/04/2026
+
+- some new results 
+
+![alt text](21_apr.png)
+
 ### date: 20/04/2026
 
 - figured out best values for TM = 32, TN = 128, TK = 16 using autotune.py

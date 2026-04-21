@@ -57,11 +57,13 @@ int main(int argc, char** argv) {
     opt.setOption('m');
     opt.setOption('n');
     opt.setOption('k');
+    opt.setOption('b');
     opt.setFlag('h');
 
-    opt.addUsage("Usage: matmul_ptr -m <rows> -n <cols> -k <inner>");
+    opt.addUsage("Usage: matmul_ptr -m <rows> -n <cols> -k <inner> [-b <num_blocks>]");
     opt.addUsage("  A is m x k, B is k x n, C is m x n");
     opt.addUsage("  Example: -m 1024 -n 1024 -k 1024");
+    opt.addUsage("  Optional: -b <num_blocks> for blocked matmul (default: 32)");
     opt.addUsage("  Use -h for help");
 
     opt.useCommandArgs(argc, argv);
@@ -75,6 +77,7 @@ int main(int argc, char** argv) {
     const char* m_val = opt.getValue('m');
     const char* n_val = opt.getValue('n');
     const char* k_val = opt.getValue('k');
+    const char* b_val = opt.getValue('b');
 
     if (!m_val || !n_val || !k_val) {
         std::cerr << "Error: missing required arguments.\n";
@@ -91,8 +94,7 @@ int main(int argc, char** argv) {
     const size_t measured_runs = 20;
 
     const size_t N = m;
-    const size_t NB = 32;
-    const size_t bs = N/NB;
+    const size_t NB = b_val ? parse_size(b_val, "b") : 32;
 
     if (m == n && n == k) {
         std::cout << "Blocked matmul can be applied.\n";
@@ -100,6 +102,14 @@ int main(int argc, char** argv) {
         std::cout << "Blocked matmul can not be applied.\n";
         return 1;
     }
+
+    if (N % NB != 0) {
+        std::cerr << "Error: -b must evenly divide the square matrix size. "
+                  << "Received N=" << N << ", NB=" << NB << '\n';
+        return 1;
+    }
+
+    const size_t bs = N / NB;
 
     const size_t a_size = safe_mul(m, k, "A size");
     const size_t b_size = safe_mul(k, n, "B size");
@@ -156,6 +166,8 @@ int main(int argc, char** argv) {
               << ", GigaFLOPS: " << blocked_gflops << '\n';
     std::cout << "Matmul time for naive implementation (ms): " << n_elapsed_ms.count()
               << ", GigaFLOPS: " << naive_gflops << '\n';
+    std::cout << "blocked_config: NB=" << NB
+              << ", block_size=" << bs << '\n';
     std::cout << "benchmark_config: warmup_runs=" << warmup_runs
               << ", measured_runs=" << measured_runs << '\n';
     std::cout << "Blocked speedup vs naive: "

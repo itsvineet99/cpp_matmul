@@ -49,8 +49,8 @@ make all
 | 1 | Naive vector | 1280 | ~1x | 1.7 |
 | 2 | Naive pointer | 1273 | 1x | 1.7 |
 | 3 | Pointer loop order optimization | 83 | 15x |  26 |
-| 4 | blocked matmul | 172 | 7x | 12.5 |
-| 5 | parallele blocked (with same tile size on all diemnsions – N) | 34 | 37x | 62 |
+| 4 | blocked matmul | 102 | 12.5x | 21 |
+| 5 | parallele blocked (with same tile size on all diemnsions – N) | 22.78 | 56x | 94 |
 | 6 | parallele blocked (with different tile size on all diemnsions – TM, TN, TK)| 17 | 73x | 123 |
 
 
