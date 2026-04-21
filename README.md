@@ -42,15 +42,16 @@ make all
 - datatype used is float.
 - dimension of both matrix A and B are 1024x1024.
 - we do 10 warmup runs and then 20 timed runs on which we calculate average result.
+- none of the results are exact but rounded off to closest whole number.
 
 | Step | Implementation | time (ms) | Speedup vs Naive | Gigaflops |
 |---|---|---|---|---|
-| 1 | Naive vector | 1281.57 | ~1x | 1.67 |
-| 2 | Naive pointer | 1273.71 | 1x | 1.68 |
-| 3 | Pointer loop order optimization | 83.18 | 15x |  25.81 |
-| 4 | blocked matmul | - | - | - |
-| 5 | parallele blocked (with same tile size on all diemnsions – N) | - | - | - |
-| 6 | parallele blocked (with different tile size on all diemnsions – TM, TN, TK)| 17.46 | 73x | 122.93 |
+| 1 | Naive vector | 1280 | ~1x | 1.7 |
+| 2 | Naive pointer | 1273 | 1x | 1.7 |
+| 3 | Pointer loop order optimization | 83 | 15x |  26 |
+| 4 | blocked matmul | 172 | 7x | 12.5 |
+| 5 | parallele blocked (with same tile size on all diemnsions – N) | 34 | 37x | 62 |
+| 6 | parallele blocked (with different tile size on all diemnsions – TM, TN, TK)| 17 | 73x | 123 |
 
 
 
