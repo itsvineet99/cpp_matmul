@@ -1,6 +1,7 @@
 #include "third_party/anyoption/anyoption.h"
 #include "matmul_utils.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <iostream>
@@ -30,22 +31,35 @@ void naive_matmul(const float* A,
 void blocked_matmul(const float* A,
                     const float* B,
                     float* C,
-                    size_t N,
-                    size_t NB,
-                    size_t bs) {
+                    size_t m,
+                    size_t n,
+                    size_t k,
+                    size_t bm,
+                    size_t bn,
+                    size_t bk) {
+    const size_t m_blocks = (m + bm - 1) / bm;
+    const size_t n_blocks = (n + bn - 1) / bn;
+
     #pragma omp parallel for collapse(2) default(shared)
-    for (size_t p = 0; p < NB; ++p){
-        for (size_t q = 0; q < NB; ++q) {
-            for (size_t r = 0; r < NB; ++r) {
-                for (size_t i = p*bs; i < p*bs + bs; ++i) {
-                    const size_t a_c_row = i * N; // same thing for a and c.
+    for (size_t bi = 0; bi < m_blocks; ++bi) {
+        for (size_t bj = 0; bj < n_blocks; ++bj) {
+            const size_t i0 = bi * bm;
+            const size_t j0 = bj * bn;
+            const size_t i_max = std::min(i0 + bm, m);
+            const size_t j_max = std::min(j0 + bn, n);
 
-                    for (size_t k = r*bs; k < r*bs + bs; ++k) {
-                        const float a_val = A[a_c_row + k];
-                        const size_t b_row = k*N;
+            for (size_t k0 = 0; k0 < k; k0 += bk) {
+                const size_t k_max = std::min(k0 + bk, k);
+                for (size_t i = i0; i < i_max; ++i) {
+                    const size_t a_row = i * k;
+                    const size_t c_row = i * n;
 
-                        for (size_t j = q*bs; j < q*bs + bs; ++j) {
-                                C[a_c_row + j] += a_val * B[b_row + j];
+                    for (size_t p = k0; p < k_max; ++p) {
+                        const float a_val = A[a_row + p];
+                        const size_t b_row = p * n;
+
+                        for (size_t j = j0; j < j_max; ++j) {
+                            C[c_row + j] += a_val * B[b_row + j];
                         }
                     }
                 }
@@ -62,10 +76,10 @@ int main(int argc, char** argv) {
     opt.setOption('b');
     opt.setFlag('h');
 
-    opt.addUsage("Usage: matmul_ptr -m <rows> -n <cols> -k <inner> [-b <num_blocks>]");
+    opt.addUsage("Usage: matmul_ptr -m <rows> -n <cols> -k <inner> [-b <block_size>]");
     opt.addUsage("  A is m x k, B is k x n, C is m x n");
     opt.addUsage("  Example: -m 1024 -n 1024 -k 1024");
-    opt.addUsage("  Optional: -b <num_blocks> for blocked matmul (default: 128)");
+    opt.addUsage("  Optional: -b <block_size> for blocked matmul (default: 128)");
     opt.addUsage("  Use -h for help");
 
     opt.useCommandArgs(argc, argv);
@@ -95,23 +109,7 @@ int main(int argc, char** argv) {
     const size_t warmup_runs = 10;
     const size_t measured_runs = 20;
 
-    const size_t N = m;
-    const size_t NB = b_val ? parse_size(b_val, "b") : 128;
-
-    if (m == n && n == k) {
-        std::cout << "Blocked matmul can be applied.\n";
-    } else {
-        std::cout << "Blocked matmul can not be applied.\n";
-        return 1;
-    }
-
-    if (N % NB != 0) {
-        std::cerr << "Error: -b must evenly divide the square matrix size. "
-                  << "Received N=" << N << ", NB=" << NB << '\n';
-        return 1;
-    }
-
-    const size_t bs = N / NB;
+    const size_t block_size = b_val ? parse_size(b_val, "b") : 128;
 
     const size_t a_size = safe_mul(m, k, "A size");
     const size_t b_size = safe_mul(k, n, "B size");
@@ -135,17 +133,35 @@ int main(int argc, char** argv) {
         C_naive[i] = 0.0f;
     }
 
-    const auto blocked_runner = [](const float* A,
-                                   const float* B,
-                                   float* C,
-                                   size_t N,
-                                   size_t NB,
-                                   size_t bs) {
-        blocked_matmul(A, B, C, N, NB, bs);
-    };
+    const auto blocked_runner_with_config =
+        [block_size](const float* A,
+                     const float* B,
+                     float* C,
+                     size_t m,
+                     size_t n,
+                     size_t k) {
+            blocked_matmul(A,
+                           B,
+                           C,
+                           m,
+                           n,
+                           k,
+                           block_size,
+                           block_size,
+                           block_size);
+        };
 
     const float blocked_avg_ms = benchmark_average_ms(
-        blocked_runner, A, B, C_blocked, N, NB, bs, c_size, warmup_runs, measured_runs);
+        blocked_runner_with_config,
+        A,
+        B,
+        C_blocked,
+        m,
+        n,
+        k,
+        c_size,
+        warmup_runs,
+        measured_runs);
     const float naive_avg_ms = benchmark_average_ms(
         naive_matmul, A, B, C_naive, m, n, k, c_size, warmup_runs, measured_runs);
 
@@ -168,8 +184,9 @@ int main(int argc, char** argv) {
               << ", GigaFLOPS: " << blocked_gflops << '\n';
     std::cout << "Matmul time for naive implementation (ms): " << n_elapsed_ms.count()
               << ", GigaFLOPS: " << naive_gflops << '\n';
-    std::cout << "blocked_config: NB=" << NB
-              << ", block_size=" << bs << '\n';
+    std::cout << "blocked_config: bm=" << block_size
+              << ", bn=" << block_size
+              << ", bk=" << block_size << '\n';
     std::cout << "benchmark_config: warmup_runs=" << warmup_runs
               << ", measured_runs=" << measured_runs << '\n';
     std::cout << "Blocked speedup vs naive: "
