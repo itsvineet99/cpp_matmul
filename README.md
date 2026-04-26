@@ -31,7 +31,24 @@ make all
 ./naive_ptr -m 1024 -n 1024 -k 1024
 ./matmul_vector -m 1024 -n 1024 -k 1024
 ./ptr_order -m 1024 -n 1024 -k 1024
+./blocked_matmul -m 1024 -n 1024 -k 1024
+./blocked_parallel -m 1024 -n 1024 -k 1024
 ./adv_blocked_parallel_matmul  -m 1024 -n 1024 -k 1024
+./strassen -m 1024 -n 1024 -k 1024
+```
+
+to see what flags are available you can use given command
+
+```bash
+./<implementation> -h
+```
+
+---
+
+## Test
+
+```bash
+make test
 ```
 
 ---
