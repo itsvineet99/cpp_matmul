@@ -57,6 +57,13 @@ void blocked_parallel_matmul(const float* A,
                              size_t n,
                              size_t k);
 
+void strassen_matmul(const float* A,
+                     const float* B,
+                     float* C,
+                     size_t m,
+                     size_t n,
+                     size_t k);
+
 namespace {
 
 struct MatrixShape {
@@ -231,6 +238,15 @@ void run_advanced_blocked_parallel_impl(const std::vector<float>& A,
         A.data(), B.data(), C.data(), m, n, k);
 }
 
+void run_strassen_impl(const std::vector<float>& A,
+                       const std::vector<float>& B,
+                       std::vector<float>& C,
+                       size_t m,
+                       size_t n,
+                       size_t k) {
+    strassen_matmul(A.data(), B.data(), C.data(), m, n, k);
+}
+
 std::string matrix_shape_name(const ::testing::TestParamInfo<MatrixShape>& info) {
     return info.param.name;
 }
@@ -259,6 +275,23 @@ TEST_P(MatmulCorrectnessTest, BlockedParallelMatchesReference) {
 
 TEST_P(MatmulCorrectnessTest, AdvancedBlockedParallelMatchesReference) {
     run_correctness_case(GetParam(), run_advanced_blocked_parallel_impl);
+}
+
+TEST_P(MatmulCorrectnessTest, StrassenMatchesReference) {
+    run_correctness_case(GetParam(), run_strassen_impl);
+}
+
+TEST(StrassenCorrectnessTest, HandlesOddRectangularDimensions) {
+    const MatrixShape shape{37, 29, 43, "OddRectangular"};
+    const std::vector<float> A = build_test_matrix(shape.m, shape.k, 3);
+    const std::vector<float> B = build_test_matrix(shape.k, shape.n, 4);
+    std::vector<float> reference(safe_mul(shape.m, shape.n, "reference size"), 0.0f);
+    std::vector<float> actual(reference.size(), 0.0f);
+
+    matmul_naive_ptr(A.data(), B.data(), reference.data(), shape.m, shape.n, shape.k);
+    strassen_matmul(A.data(), B.data(), actual.data(), shape.m, shape.n, shape.k);
+
+    expect_matrices_match(actual, reference, shape.n);
 }
 
 INSTANTIATE_TEST_SUITE_P(MatrixSizes,

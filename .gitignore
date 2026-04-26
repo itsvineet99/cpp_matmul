@@ -15,6 +15,7 @@ naive_ptr
 blocked_matmul
 blocked_parallel
 matmul_test
+strassen
 randoms/
 
 # Executables

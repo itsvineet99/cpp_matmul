@@ -52,6 +52,7 @@ make all
 | 4 | blocked matmul | 102 | 12.5x | 21 |
 | 5 | parallele blocked (with same tile size on all diemnsions – N) | 22.78 | 56x | 94 |
 | 6 | parallele blocked (with different tile size on all diemnsions – TM, TN, TK)| 17 | 73x | 123 |
+| 7 | strassen algorithm | 73.50 | 17x | 29 |
 
 
 
