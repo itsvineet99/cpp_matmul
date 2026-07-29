@@ -1,6 +1,6 @@
-# C++ Matrix Multiplication 
+# gemm_w_cpp
 
-In this project we implement matrix multiplication in cpp and then optimize it get best results on cpu.
+In this project we do **GEMM (general matrix to matrix multiplication)** implementation in cpp and then optimize it get best results on cpu.
 
 - The best implementation right now is adv_boxed_parallel_matmul.cpp which uses both boxed matrix multiplication and parallelization using openmp. 
 - **the least time it takes to mutliply matrix A and matrix B both with `1024x1024` dimensions and type `float` is ~18 ms.**
